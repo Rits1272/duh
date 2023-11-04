@@ -5,13 +5,7 @@
 #include<stdbool.h>
 #include<regex.h>
 
-
-// Number
-// value -> 4, type -> NUMBER
-
-// string
-// value -> "something", type -> STRING
-
+#define MAX_TOKENS 100000
 struct Token {
   // token value
   char* value;
@@ -20,11 +14,22 @@ struct Token {
   char* type;              // number, string, operator, keywords, delimiters
 };
 
+struct Node {
+  struct Token* left;
+  struct Token* right;
 
-void display_message(char* message) {
-  printf("%s\n", message);
-  return;
-}
+  // Expressions: BINARY_EXPR, NUMBER_EXPR, STRING_EXPR, IDENTIFIER_EXPR
+  // Statements: VAR_DECL
+  // Error: ERROR
+  char* kind;             
+};
+
+
+char* keywords[] = {"variable", "integer", "string"};
+const int keyword_count = sizeof(keywords) / sizeof(keywords[0]);
+
+struct Token tokens[MAX_TOKENS];
+int token_count = 0;
 
 void print_token(struct Token token) {
   printf("[TOKEN] VALUE: %s, TYPE: %s\n", token.value, token.type);
@@ -81,7 +86,7 @@ struct Token get_token(char* value) {
   else if(strcmp(value, ";") == 0 || strcmp(value, ",") == 0) {
     token.type = "symbol";
   }
-  else if(strcmp(value, "=") == 0 || strcmp(value, "+") == 0 || strcmp(value, "-") == 0 || strcmp(value, "/") == 0) {
+  else if(strcmp(value, "=") == 0 || strcmp(value, "+") == 0 || strcmp(value, "-") == 0 || strcmp(value, "/") == 0 || strcmp(value, "*") == 0) {
     token.type = "operator";
   }
   else if(isalpha(*value)) {
@@ -142,7 +147,6 @@ char* tokenize(char* source) {
   else {
     return &str[start];
   }
-
 }
 
 void scanner(char *source) {
@@ -162,14 +166,27 @@ void scanner(char *source) {
   while (ptr != NULL) {
     char *lexeme = get_string(ptr, ptr + strlen(ptr) - 1);
     token = get_token(lexeme);
+    tokens[token_count++] = token;
     // print_token(token);
     ptr = tokenize(NULL);
   }
 }
 
+
+void parser(struct Token* tokens) {
+  int iterator = 0;
+  while(iterator < token_count) {
+    struct Token curr_token = tokens[iterator];
+
+    if (strcmp(curr_token.type, "keyword") == 0) {
+
+    }
+  }
+}
+
 char* read_program(char* file_path) {
   if(!file_path) {
-    display_message("Unable to find file path of the program");
+    printf("Unable to find file path of the program");
     return NULL;
   }
 
@@ -193,7 +210,7 @@ char* read_program(char* file_path) {
 // Duh compiler takes the str program file path as argument here
 int main(int argc, char** argv) {
   if (argc != 2) {
-    display_message("Duh compiler only takes program file path as argument");
+    printf("Duh compiler only takes program file path as argument");
     exit(0);
   }
 
@@ -203,4 +220,8 @@ int main(int argc, char** argv) {
   
   // Step 2: Scanner/Lexer for the program to categorise program into tokens
   scanner(program);
+  
+  // Step 3: Parser: Construct AST from the tokens
+  parser(tokens);
+
 } 
