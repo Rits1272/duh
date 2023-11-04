@@ -6,32 +6,166 @@
 #include<regex.h>
 
 #define MAX_TOKENS 100000
-struct Token {
-  // token value
+
+typedef struct Token {
   char* value;
-
-  // token type
   char* type;              // number, string, operator, keywords, delimiters
-};
+} Token;
 
-struct Node {
-  struct Token* left;
-  struct Token* right;
+typedef enum {
+  INTEGER,
+  STRING,
+  UNDEFINED
+} VariableType;
 
-  // Expressions: BINARY_EXPR, NUMBER_EXPR, STRING_EXPR, IDENTIFIER_EXPR
-  // Statements: VAR_DECL
-  // Error: ERROR
-  char* kind;             
-};
+typedef struct VariableNode {
+  char *name;
+  VariableType type;
+  char* scope;
+  char* value; // typecast it according to the variable type 
+} VariableNode;
 
+typedef struct VariableDeclarationNode {
+  VariableNode* variable; 
+} VariableDeclarationNode;
+
+typedef enum {
+  ADDITION,
+  SUBSTRACTION,
+  DIVISION,
+  MULTIPLICATION
+} BinaryOperator;
+
+typedef struct BinaryExpressionNode {
+  struct BinaryExpressionNode* left;
+  struct BinaryExpressionNode* right;
+  BinaryOperator operator;
+} BinaryExpressionNode;
+
+typedef enum {
+  PROGRAM_NODE,
+  BINARY_NODE,
+  VARIABLE_NODE,
+  VARIABLE_DECLARATION_NODE
+} NodeType;
+
+typedef struct Node {
+  NodeType type;
+  union {
+    VariableNode variable;
+    VariableDeclarationNode variable_decl;
+    BinaryExpressionNode binary_expr;
+  } data;
+} ASTNode;
+
+typedef struct ProgramNode {
+  ASTNode** children;
+  int childCount;
+} ProgramNode;
+
+
+void printASTNode(ASTNode* node) {
+  switch(node->type) {
+    case PROGRAM_NODE:
+      printf("PROGRAM_NODE\n");
+      break;
+    case BINARY_NODE:
+      printf("BINARY NODE\n");
+      break;
+    case VARIABLE_NODE:
+      printf("VARIABLE NODE: name: %s, value: %s", node->data.variable.name, node->data.variable.value);
+      break;
+    case VARIABLE_DECLARATION_NODE:
+      printf("VARIABLE DECLARATION NODE");
+      break;
+    default:
+      printf("Unknown mode\n");
+      break;
+  }
+} 
+
+BinaryExpressionNode* createBinaryExpression(BinaryOperator op, BinaryExpressionNode* left, BinaryExpressionNode* right) {
+  BinaryExpressionNode* node = (BinaryExpressionNode*) malloc(sizeof(BinaryExpressionNode));
+
+  if (node != NULL) {
+    node->operator = op;
+    node->left = left;
+    node->right = right;
+  }
+
+  return node;
+}
+
+VariableDeclarationNode* createVariableDeclarationNode(VariableNode* variableNode) {
+  VariableDeclarationNode* node = (VariableDeclarationNode*) malloc(sizeof(VariableDeclarationNode));
+
+  if(node != NULL) {
+    node->variable = variableNode;
+  }
+
+  return node;
+}
+
+VariableNode* createVariableNode(char* name, char* value, VariableType type) {
+  VariableNode* node = (VariableNode*) malloc(sizeof(VariableNode));
+
+  if (node != NULL) {
+    node->name = name;
+    node->type = type;
+    node->value = value;
+    node->scope = NULL; // change it later
+  }
+
+  return node;
+} 
+
+ProgramNode* createProgramNode() {
+  ProgramNode* node = (ProgramNode*) malloc(sizeof(ProgramNode));
+  
+  if (node != NULL) {
+    node->children = NULL;
+    node->childCount = 0;
+  }
+
+  return node;
+}
+
+void addChildNode(ProgramNode* program_node, ASTNode* child) {
+  program_node->childCount++;
+  program_node->children = realloc(program_node->children, program_node->childCount * sizeof(ASTNode));
+  program_node->children[program_node->childCount - 1] = child;
+}
+
+void parseTree(ProgramNode* root) {
+  if(root == NULL) {
+    return;
+  }
+  for(int child_count = 0; child_count < root->childCount; child_count++) {
+    printf("\n");
+    parseTree((ProgramNode*)root->children[child_count]);
+  }
+  for(int i = 0; i < root->childCount; i++) {
+    printASTNode(root->children[i]);
+  }
+}
 
 char* keywords[] = {"variable", "integer", "string"};
 const int keyword_count = sizeof(keywords) / sizeof(keywords[0]);
 
-struct Token tokens[MAX_TOKENS];
+Token tokens[MAX_TOKENS];
 int token_count = 0;
 
-void print_token(struct Token token) {
+int get_variable_type(char* type) {
+  if(strcmp(type, "integer") == 0) {
+    return INTEGER;
+  }
+  if(strcmp(type, "string") == 0) {
+    return STRING;
+  }
+  return UNDEFINED;
+}
+
+void print_token(Token token) {
   printf("[TOKEN] VALUE: %s, TYPE: %s\n", token.value, token.type);
   return;
 }
@@ -68,8 +202,8 @@ bool is_a_string(char* str) {
 }
 
 // function that takes in string and try to figure out token type for it and create a token
-struct Token get_token(char* value) {
-  struct Token token;
+Token get_token(char* value) {
+  Token token;
   token.value = value;
   int length = strlen(value);
 
@@ -77,11 +211,11 @@ struct Token get_token(char* value) {
     token.type = "keyword";
   }
   else if(isdigit(*value)) {
-    token.type = "integer";
+    token.type = "int";
   }
   else if(is_a_string(value) == true) {
     token.value  = get_string(&value[1], &value[length-2]);
-    token.type = "string";
+    token.type = "str";
   }
   else if(strcmp(value, ";") == 0 || strcmp(value, ",") == 0) {
     token.type = "symbol";
@@ -96,7 +230,6 @@ struct Token get_token(char* value) {
     printf("Unable to classify vector: %s", value);
     exit(0);
   }
-  print_token(token);
   return token;
 }
 
@@ -159,7 +292,7 @@ void scanner(char *source) {
 
   char *end = begin;
 
-  struct Token token;
+  Token token;
 
   char *ptr = tokenize(source); 
 
@@ -167,21 +300,101 @@ void scanner(char *source) {
     char *lexeme = get_string(ptr, ptr + strlen(ptr) - 1);
     token = get_token(lexeme);
     tokens[token_count++] = token;
-    // print_token(token);
     ptr = tokenize(NULL);
   }
 }
 
 
-void parser(struct Token* tokens) {
+// eg: variable integer x = 10
+bool is_variable_declaration(int* curr_index, Token* tokens) {
+  const int var_decl_len = 5;
+
+  if (*curr_index < 0 || *curr_index > token_count || tokens == NULL) {
+    return false;
+  }
+
+  // variable declaration should be of 5 tokens
+  int tokens_left = token_count - *curr_index;
+  if (tokens_left < var_decl_len) {
+    return false;
+  }
+
+  // check for keyword variable
+  if(strcmp(tokens[*curr_index].type, "keyword") == 0 && strcmp(tokens[*curr_index].value, "variable") == 0) {
+    *curr_index = *curr_index + 1;
+  } else {
+    return false;
+  }
+
+  // check for keyword and should be a data type
+  if(strcmp(tokens[*curr_index].type, "keyword") == 0 && (strcmp(tokens[*curr_index].value, "integer") == 0 || strcmp(tokens[*curr_index].value, "string") == 0)) {
+    *curr_index = *curr_index + 1;
+  } else {
+    return false;
+  }
+  
+  // this should be an identifier
+  if (strcmp(tokens[*curr_index].type, "identifier") == 0) {
+    *curr_index = *curr_index + 1;
+  } else {
+
+    return false;
+  }
+
+  // should be an equal operator
+  if (strcmp(tokens[*curr_index].type, "operator") == 0 && strcmp(tokens[*curr_index].value, "=") == 0) {
+    *curr_index = *curr_index + 1;
+  } else {
+    return false;
+  }
+
+  // should be the value and should be matching the data type
+  if(strcmp(tokens[*curr_index].type, "int") == 0 && strcmp(tokens[*curr_index - 3].type, "integer")) {
+    *curr_index = *curr_index + 1;
+    return true;
+  }
+
+  if(strcmp(tokens[*curr_index].type, "str") == 0 && strcmp(tokens[*curr_index - 3].type, "string")) {
+    *curr_index = *curr_index + 1;
+    return true;
+  }
+  
+  return false;
+}
+
+
+void parser(Token* tokens) {
+  // create root node which is program node
+  ProgramNode* root = createProgramNode();
   int iterator = 0;
+  Token curr_token;
   while(iterator < token_count) {
-    struct Token curr_token = tokens[iterator];
-
+    curr_token = tokens[iterator];
+    // parse tokens into different expressions/declarations
     if (strcmp(curr_token.type, "keyword") == 0) {
-
+      if(strcmp(curr_token.value, "variable") == 0) {
+        int start_at = iterator;
+        // should be variable declaration
+        if (is_variable_declaration(&iterator, tokens)) {
+          int var_type = get_variable_type(tokens[start_at+1].value);
+          char* var_name = tokens[start_at+2].value;
+          char* var_value = tokens[start_at+4].value;
+          ASTNode* var_node = (ASTNode*)createVariableNode(var_name, var_value, var_type);
+          var_node->type = VARIABLE_NODE;
+          addChildNode(root, var_node);
+        } else {
+          break;
+        }
+      }
+    } else {
+      break;
     }
   }
+  if (iterator < token_count) {
+    printf("Syntax error while parsing %s", curr_token.value);
+    exit(0);
+  }
+  parseTree(root);
 }
 
 char* read_program(char* file_path) {
@@ -220,7 +433,6 @@ int main(int argc, char** argv) {
   
   // Step 2: Scanner/Lexer for the program to categorise program into tokens
   scanner(program);
-  
   // Step 3: Parser: Construct AST from the tokens
   parser(tokens);
 
